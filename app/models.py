@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, UUID
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 import uuid
 
 Base = declarative_base()
@@ -15,4 +15,3 @@ class GlucoseRecord(Base):
     record_type = Column(Integer, nullable=True)
     glucose_value = Column(Integer, nullable=True)
     glucose_scan = Column(Integer, nullable=True)
-

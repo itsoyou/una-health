@@ -1,6 +1,7 @@
 import logging
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 import uuid
 from contextlib import asynccontextmanager
@@ -13,8 +14,7 @@ from app.load_data import load_csv
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.drop_all)
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)
-    
+
     await load_csv()
     yield
 
@@ -41,35 +41,44 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 @app.get("/api/v1/levels/", response_model=List[GlucoseRecordOut])
 async def get_glucose_records_by_user_id(
     user_id: str,
-    start: Optional[str] = None,
+    start: Optional[str] = None,  # YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD
     end: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     query = select(GlucoseRecord).filter(GlucoseRecord.user_id == user_id)
     if start:
-        query = query.filter(GlucoseRecord.device_timestamp >= start)
+        start_dt = (
+            datetime.fromisoformat(start)
+            if "T" in start
+            else datetime.strptime(start, "%Y-%m-%d")
+        )
+        query = query.filter(GlucoseRecord.device_timestamp >= start_dt)
     if end:
-        query = query.filter(GlucoseRecord.device_timestamp <= end)
+        end_dt = (
+            datetime.fromisoformat(end)
+            if "T" in end
+            else datetime.strptime(end, "%Y-%m-%d")
+        )
+        query = query.filter(GlucoseRecord.device_timestamp <= end_dt)
     result = await db.execute(query.offset(offset).limit(limit))
     return result.scalars().all()
 
 
-@app.get("/api/v1/levels/{id}/", response_model=GlucoseRecordOut)
-async def get_glucose_records(
-    id: uuid.UUID,
-    db: AsyncSession = Depends(get_db)
-):
+@app.get("/api/v1/levels/{id}", response_model=GlucoseRecordOut)
+async def get_glucose_records(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     query = select(GlucoseRecord).filter(GlucoseRecord.id == id)
     result = await db.execute(query)
-    return result.scalar_one_or_none()
+    record = result.scalar_one_or_none()
+    if record is None:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return record
 
 
 @app.post("/api/v1/levels/", response_model=GlucoseRecordOut)
 async def create_glucose_record(
-    entry: GlucoseRecordCreate,
-    db: AsyncSession = Depends(get_db)
+    entry: GlucoseRecordCreate, db: AsyncSession = Depends(get_db)
 ):
     record = GlucoseRecord(
         user_id=entry.user_id,

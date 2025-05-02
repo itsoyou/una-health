@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:14
+    container_name: postgres_test_db
+    restart: always
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env.test
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  postgres_test_data:
+    driver: local

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_serializer
 from typing import Optional
 from datetime import datetime
 import uuid
@@ -13,12 +13,13 @@ class GlucoseRecordOut(BaseModel):
     record_type: Optional[int]
     glucose_value: Optional[int]
     glucose_scan: Optional[int]
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
 
-    class Config:
-        orm_mode = True
-        json_encoders = {
-            datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")
-        }
+    @field_serializer("device_timestamp")
+    def serialize_device_timestamp(self, device_timestamp: datetime, _info):
+        return device_timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class GlucoseRecordCreate(BaseModel):
