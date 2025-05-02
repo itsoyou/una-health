@@ -30,3 +30,7 @@ class GlucoseRecordCreate(BaseModel):
     record_type: Optional[int]
     glucose_value: Optional[int]
     glucose_scan: Optional[int]
+
+
+class ThresholdOut(BaseModel):
+    below_threshold: float

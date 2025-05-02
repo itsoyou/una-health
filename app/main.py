@@ -1,20 +1,23 @@
 import logging
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
-from typing import AsyncGenerator, List, Optional
 import uuid
 from contextlib import asynccontextmanager
-from sqlalchemy import select
+from datetime import datetime
+from typing import AsyncGenerator, List, Optional
 
-from app.models import GlucoseRecord, Base
-from app.schemas import GlucoseRecordOut, GlucoseRecordCreate
-from app.database import engine, SessionLocal
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy import select, func
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import SessionLocal, engine
 from app.load_data import load_csv
+from app.models import Base, GlucoseRecord
+from app.schemas import GlucoseRecordCreate, GlucoseRecordOut, ThresholdOut
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
 
@@ -93,3 +96,33 @@ async def create_glucose_record(
     await db.commit()
     await db.refresh(record)
     return record
+
+
+@app.get("/api/v1/threshold/", response_model=ThresholdOut)
+async def get_threshold_by_user(
+    user_id: uuid.UUID, threshold: int, db: AsyncSession = Depends(get_db)
+):
+    query = (
+        select(func.count())
+        .select_from(GlucoseRecord)
+        .filter(
+            GlucoseRecord.user_id == user_id,
+            (GlucoseRecord.glucose_value <= threshold)
+            | (GlucoseRecord.glucose_scan <= threshold),
+        )
+    )
+    result = await db.execute(query)
+    selected_result = result.scalar_one()
+
+    total_query = (
+        select(func.count())
+        .select_from(GlucoseRecord)
+        .filter(GlucoseRecord.user_id == user_id)
+    )
+    total_result = await db.execute(total_query)
+    total_count = total_result.scalar_one()
+
+    if total_count == 0:
+        return ThresholdOut(below_threshold=0.0)
+
+    return ThresholdOut(below_threshold=float(selected_result) / float(total_count))
